@@ -1,0 +1,85 @@
+# GitHub Copilot Configuration
+# This file configures GitHub Copilot settings for optimal assistance
+
+# Preferred languages and frameworks
+languages:
+  - python
+  - typescript
+  - javascript
+  - go
+  - java
+  - csharp
+  - rust
+  - sql
+
+frameworks:
+  - fastapi
+  - express
+  - react
+  - vue
+  - angular
+  - gin
+  - spring-boot
+  - django
+  - flask
+
+# Code style preferences
+code_style:
+  python:
+    formatter: black
+    line_length: 88
+    imports: isort
+    type_hints: true
+    docstrings: google
+  
+  typescript:
+    formatter: prettier
+    semicolons: true
+    quotes: single
+    trailing_commas: es5
+    tabs: false
+    tab_width: 2
+  
+  go:
+    formatter: gofmt
+    imports: goimports
+    naming: camelCase
+    error_handling: explicit
+  
+  java:
+    formatter: google-java-format
+    naming: camelCase
+    access_modifiers: explicit
+
+# Testing preferences
+testing:
+  python: pytest
+  typescript: jest
+  go: standard_library
+  java: junit5
+
+# Documentation preferences
+documentation:
+  api_docs: openapi
+  code_comments: minimal_but_clear
+  readme_style: comprehensive
+  inline_docs: true
+
+# AI assistance preferences
+assistance:
+  suggest_tests: true
+  suggest_error_handling: true
+  suggest_performance_optimizations: true
+  suggest_security_best_practices: true
+  suggest_accessibility_improvements: true
+  
+# Project-specific contexts
+project_contexts:
+  - web_api_development
+  - microservices_architecture
+  - ci_cd_pipelines
+  - containerization
+  - cloud_deployment
+  - security_best_practices
+  - performance_optimization
+  - testing_strategies

@@ -1,0 +1,185 @@
+# Comprehensive .gitignore for multiple languages and frameworks
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.atom/
+.brackets.json
+*.code-workspace
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.cache
+.env.local
+.env.*.local
+
+# Build artifacts and dependencies
+build/
+dist/
+target/
+out/
+bin/
+obj/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn/
+.pnp.*
+coverage/
+.nyc_output
+.next/
+.nuxt/
+.vuepress/dist
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+*.egg-info/
+dist/
+build/
+
+# Go
+*.test
+*.prof
+vendor/
+.vendor/
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+.gradle/
+gradle/
+gradlew
+gradlew.bat
+
+# .NET
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# Docker
+.dockerignore
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Kubernetes
+*.kubeconfig
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Security and secrets
+.env
+.env.production
+.env.staging
+*.pem
+*.key
+*.crt
+secrets/
+.secrets/
+
+# Cloud provider configurations
+.aws/
+.azure/
+.gcp/
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Compiled files and archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Package manager lockfiles (comment out if you want to track them)
+# package-lock.json
+# yarn.lock
+# Pipfile.lock
+
+# AI and ML models
+*.h5
+*.pkl
+*.model
+models/
+checkpoints/
+
+# Documentation builds
+docs/_build/
+site/
+
+# Test output
+test-results/
+coverage-reports/

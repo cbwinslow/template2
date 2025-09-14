@@ -1,0 +1,97 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sundays
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [python, nodejs, go]
+        
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Start services
+        run: |
+          docker-compose up -d ${{ matrix.service }}-api postgres redis
+          
+      - name: Wait for services
+        run: |
+          sleep 30
+          docker-compose ps
+          
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+          
+      - name: Run performance tests
+        run: |
+          # Create k6 test script
+          cat > benchmark.js << 'EOF'
+          import http from 'k6/http';
+          import { check, sleep } from 'k6';
+          
+          export let options = {
+            stages: [
+              { duration: '30s', target: 10 },
+              { duration: '1m', target: 20 },
+              { duration: '30s', target: 0 },
+            ],
+          };
+          
+          const BASE_URL = __ENV.BASE_URL || 'http://localhost:8000';
+          
+          export default function() {
+            // Test health endpoint
+            let response = http.get(`${BASE_URL}/health`);
+            check(response, {
+              'status is 200': (r) => r.status === 200,
+              'response time < 500ms': (r) => r.timings.duration < 500,
+            });
+            
+            // Test users endpoint
+            response = http.get(`${BASE_URL}/users`);
+            check(response, {
+              'users status is 200': (r) => r.status === 200,
+              'users response time < 1000ms': (r) => r.timings.duration < 1000,
+            });
+            
+            sleep(1);
+          }
+          EOF
+          
+          # Run benchmarks for each service
+          case "${{ matrix.service }}" in
+            "python")
+              BASE_URL=http://localhost:8000 k6 run benchmark.js
+              ;;
+            "nodejs")
+              BASE_URL=http://localhost:3000 k6 run benchmark.js
+              ;;
+            "go")
+              BASE_URL=http://localhost:8080 k6 run benchmark.js
+              ;;
+          esac
+          
+      - name: Collect metrics
+        run: |
+          docker-compose logs ${{ matrix.service }}-api
+          
+      - name: Cleanup
+        if: always()
+        run: |
+          docker-compose down -v
