@@ -283,7 +283,7 @@ jobs:
       
       # ARM Template Deployment
       - name: 🏗️ Deploy ARM Template
-        uses: azure/arm-deploy@v1
+        uses: azure/arm-deploy@v2
         with:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: github-template-rg
