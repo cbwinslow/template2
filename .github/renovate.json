@@ -1,0 +1,167 @@
+# Configuration for Renovate Bot
+# Automated dependency updates with intelligent scheduling and grouping
+
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    "config:recommended",
+    ":enableRenovate",
+    ":prImmediately",
+    ":semanticCommitTypeAll(chore)",
+    ":timezone(UTC)"
+  ],
+  "description": "Comprehensive dependency management for the GitHub Actions template repository",
+  
+  "schedule": ["after 2am and before 4am on Monday"],
+  "platformAutomerge": false,
+  "automerge": false,
+  "major": {
+    "automerge": false
+  },
+  "minor": {
+    "automerge": false
+  },
+  "patch": {
+    "automerge": true,
+    "automergeType": "pr",
+    "ignoreTests": false
+  },
+  
+  "packageRules": [
+    {
+      "description": "Group all GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "schedule": ["at any time"],
+      "automerge": true,
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Group Python dependencies by type",
+      "matchManagers": ["pip_requirements", "pip_setup", "pipenv", "poetry"],
+      "matchPackageNames": ["*"],
+      "groupName": "Python dependencies",
+      "schedule": ["after 2am and before 4am on Tuesday"]
+    },
+    {
+      "description": "Group Node.js dependencies",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["*"],
+      "groupName": "Node.js dependencies",
+      "schedule": ["after 2am and before 4am on Wednesday"]
+    },
+    {
+      "description": "Group Java dependencies",
+      "matchManagers": ["maven"],
+      "matchPackageNames": ["*"],
+      "groupName": "Java dependencies",
+      "schedule": ["after 2am and before 4am on Thursday"]
+    },
+    {
+      "description": "Group Go dependencies",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["*"],
+      "groupName": "Go dependencies",
+      "schedule": ["after 2am and before 4am on Friday"]
+    },
+    {
+      "description": "Security updates - immediate",
+      "matchPackageNames": ["*"],
+      "vulnerabilityAlerts": true,
+      "schedule": ["at any time"],
+      "automerge": true,
+      "minimumReleaseAge": "0 days",
+      "prPriority": 10
+    },
+    {
+      "description": "Pin Docker tags to prevent unexpected updates",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "pinDigests": true,
+      "automerge": false
+    },
+    {
+      "description": "Group Terraform provider updates",
+      "matchManagers": ["terraform"],
+      "matchPackageNames": ["*"],
+      "groupName": "Terraform providers",
+      "schedule": ["after 2am and before 4am on Saturday"]
+    }
+  ],
+  
+  "docker": {
+    "enabled": true,
+    "pinDigests": true
+  },
+  
+  "npm": {
+    "rangeStrategy": "bump"
+  },
+  
+  "pip_requirements": {
+    "enabled": true
+  },
+  
+  "maven": {
+    "enabled": true
+  },
+  
+  "gomod": {
+    "enabled": true
+  },
+  
+  "terraform": {
+    "enabled": true
+  },
+  
+  "github-actions": {
+    "enabled": true,
+    "pinDigests": false
+  },
+  
+  "prCreation": "not-pending",
+  "prNotPendingHours": 2,
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 5,
+  
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageAction": "update",
+  "commitMessageExtra": "to {{#if isPinDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}{{prettyNewMajor}}{{else}}{{#if isSingleVersion}}{{prettyNewVersion}}{{else}}{{newValue}}{{/if}}{{/if}}{{/if}}",
+  
+  "prTitle": "{{commitMessagePrefix}} {{commitMessageAction}} {{commitMessageTopic}} {{commitMessageExtra}}",
+  "prBodyTemplate": "{{{header}}}{{{table}}}{{{notes}}}{{{changelogs}}}{{{configDescription}}}{{{controls}}}{{{footer}}}",
+  
+  "labels": ["dependencies", "automated"],
+  "assignees": ["@cbwinslow"],
+  "reviewers": ["@cbwinslow"],
+  
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "automerge": true,
+    "labels": ["security", "vulnerability"]
+  },
+  
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["before 4am on the first day of the month"],
+    "commitMessageAction": "refresh",
+    "prTitle": "Lock file maintenance"
+  },
+  
+  "rebaseWhen": "conflicted",
+  "stopUpdatingLabel": "renovate-stop",
+  
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update tool versions in Dockerfiles",
+      "fileMatch": ["(^|/|\\.)Dockerfile$", "(^|/)Dockerfile\\.[^/]*$"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\s*ENV .*?_VERSION=(?<currentValue>.*)\\s"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    }
+  ]
+}

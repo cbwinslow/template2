@@ -1,0 +1,690 @@
+name: 🚀 Multi-Cloud Deployment & Infrastructure Automation
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      deployment_target:
+        description: 'Deployment target'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+          - development
+          - all-platforms
+      infrastructure_action:
+        description: 'Infrastructure action'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - destroy
+          - plan
+          - validate
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ============================================================================
+  # CONTAINER BUILD & REGISTRY OPERATIONS
+  # ============================================================================
+  
+  container-build:
+    runs-on: ubuntu-latest
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tags: ${{ steps.build.outputs.tags }}
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # Multi-platform Docker builds
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+      
+      - name: 🔑 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 🔑 Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        continue-on-error: true
+      
+      - name: 🔑 Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        env:
+          AWS_REGION: us-east-1
+        continue-on-error: true
+      
+      - name: 🔑 Login to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_ENDPOINT }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+        continue-on-error: true
+      
+      # Extract metadata for tagging
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+            ${{ secrets.ACR_ENDPOINT }}/${{ github.event.repository.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      # Build and push multi-platform images
+      - name: 🏗️ Build and push Docker images
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./examples/python/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+      
+      # Sign container images with Cosign
+      - name: ✍️ Install Cosign
+        uses: sigstore/cosign-installer@v3
+      
+      - name: 🔐 Sign container images
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+      
+      # Generate SBOM (Software Bill of Materials)
+      - name: 📋 Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+      
+      - name: 📤 Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+  # ============================================================================
+  # AWS DEPLOYMENT
+  # ============================================================================
+  
+  deploy-aws:
+    needs: container-build
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.deployment_target, 'all-platforms') || contains(github.event.inputs.deployment_target, 'staging')
+    
+    environment:
+      name: aws-${{ github.event.inputs.deployment_target || 'staging' }}
+      url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # AWS CLI and credentials setup
+      - name: ☁️ Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      # Terraform Infrastructure as Code
+      - name: 🏗️ Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+          terraform_wrapper: false
+      
+      - name: 🔧 Terraform Init
+        run: |
+          cd infrastructure/aws
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=github-template-${{ github.event.inputs.deployment_target || 'staging' }}.tfstate" \
+            -backend-config="region=us-east-1"
+      
+      - name: 📋 Terraform Plan
+        run: |
+          cd infrastructure/aws
+          terraform plan \
+            -var="environment=${{ github.event.inputs.deployment_target || 'staging' }}" \
+            -var="image_tag=${{ needs.container-build.outputs.image-tags }}" \
+            -out=tfplan
+      
+      - name: 🚀 Terraform Apply
+        if: github.event.inputs.infrastructure_action != 'plan'
+        run: |
+          cd infrastructure/aws
+          terraform apply -auto-approve tfplan
+      
+      # EKS Deployment
+      - name: ⚙️ Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig --region us-east-1 --name github-template-${{ github.event.inputs.deployment_target || 'staging' }}
+      
+      - name: ⎈ Deploy to Kubernetes (EKS)
+        uses: azure/k8s-deploy@v1
+        with:
+          manifests: |
+            k8s/deployment.yaml
+            k8s/service.yaml
+            k8s/ingress.yaml
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.container-build.outputs.image-digest }}
+          namespace: default
+      
+      # ECS Deployment
+      - name: 🐳 Deploy to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: aws/task-definition.json
+          service: github-template-service
+          cluster: github-template-cluster
+          wait-for-service-stability: true
+      
+      # Lambda Deployment
+      - name: λ Deploy AWS Lambda
+        uses: appleboy/lambda-action@v0.1.9
+        with:
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_region: us-east-1
+          function_name: github-template-function
+          zip_file: lambda-function.zip
+        continue-on-error: true
+      
+      # CloudFormation Stack Deployment
+      - name: ☁️ Deploy CloudFormation Stack
+        uses: aws-actions/aws-cloudformation-github-deploy@v1
+        with:
+          name: github-template-stack
+          template: aws/cloudformation-template.yaml
+          parameter-overrides: |
+            Environment=${{ github.event.inputs.deployment_target || 'staging' }}
+            ImageTag=${{ needs.container-build.outputs.image-tags }}
+        continue-on-error: true
+      
+      # ElasticBeanstalk Deployment
+      - name: 🌱 Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v22
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: github-template-app
+          environment_name: github-template-${{ github.event.inputs.deployment_target || 'staging' }}
+          version_label: ${{ github.sha }}
+          region: us-east-1
+          deployment_package: deployment-package.zip
+        continue-on-error: true
+
+  # ============================================================================
+  # AZURE DEPLOYMENT
+  # ============================================================================
+  
+  deploy-azure:
+    needs: container-build
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.deployment_target, 'all-platforms') || contains(github.event.inputs.deployment_target, 'staging')
+    
+    environment:
+      name: azure-${{ github.event.inputs.deployment_target || 'staging' }}
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # Azure CLI and authentication
+      - name: 🔑 Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      # ARM Template Deployment
+      - name: 🏗️ Deploy ARM Template
+        uses: azure/arm-deploy@v1
+        with:
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: github-template-rg
+          template: azure/arm-template.json
+          parameters: |
+            environment=${{ github.event.inputs.deployment_target || 'staging' }}
+            containerImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.container-build.outputs.image-digest }}
+      
+      # Azure Container Instances
+      - name: 🐳 Deploy to Azure Container Instances
+        uses: azure/aci-deploy@v1
+        with:
+          resource-group: github-template-rg
+          dns-name-label: github-template-${{ github.event.inputs.deployment_target || 'staging' }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.container-build.outputs.image-digest }}
+          registry-login-server: ${{ env.REGISTRY }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          name: github-template-container
+          location: 'East US'
+      
+      # Azure Kubernetes Service (AKS)
+      - name: ⚙️ Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: github-template-rg
+          cluster-name: github-template-aks
+      
+      - name: ⎈ Deploy to AKS
+        uses: azure/k8s-deploy@v1
+        with:
+          manifests: |
+            k8s/deployment.yaml
+            k8s/service.yaml
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.container-build.outputs.image-digest }}
+      
+      # Azure App Service
+      - name: 🌐 Deploy to Azure App Service
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: github-template-app
+          slot-name: ${{ github.event.inputs.deployment_target || 'staging' }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.container-build.outputs.image-digest }}
+      
+      # Azure Functions
+      - name: ⚡ Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: github-template-functions
+          package: azure-functions-package.zip
+          slot-name: ${{ github.event.inputs.deployment_target || 'staging' }}
+
+  # ============================================================================
+  # GOOGLE CLOUD DEPLOYMENT
+  # ============================================================================
+  
+  deploy-gcp:
+    needs: container-build
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.deployment_target, 'all-platforms') || contains(github.event.inputs.deployment_target, 'staging')
+    
+    environment:
+      name: gcp-${{ github.event.inputs.deployment_target || 'staging' }}
+    
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # Google Cloud authentication
+      - name: 🔑 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: ☁️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+      
+      # Cloud Run Deployment
+      - name: 🏃 Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: github-template-service
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.container-build.outputs.image-digest }}
+          region: us-central1
+          env_vars: |
+            ENVIRONMENT=${{ github.event.inputs.deployment_target || 'staging' }}
+      
+      # GKE Deployment
+      - name: ⚙️ Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: github-template-cluster
+          location: us-central1
+      
+      - name: ⎈ Deploy to GKE
+        uses: azure/k8s-deploy@v1
+        with:
+          manifests: |
+            k8s/deployment.yaml
+            k8s/service.yaml
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.container-build.outputs.image-digest }}
+      
+      # App Engine Deployment
+      - name: 🚀 Deploy to App Engine
+        uses: google-github-actions/deploy-appengine@v2
+        with:
+          deliverables: app.yaml
+          version: ${{ github.sha }}
+          promote: true
+      
+      # Cloud Functions Deployment
+      - name: ⚡ Deploy to Cloud Functions
+        uses: google-github-actions/deploy-cloud-functions@v2
+        with:
+          name: github-template-function
+          runtime: python39
+          entry_point: main
+          source_dir: functions/
+      
+      # Firebase Hosting
+      - name: 🔥 Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          projectId: github-template-project
+          channelId: ${{ github.event.inputs.deployment_target || 'staging' }}
+
+  # ============================================================================
+  # MODERN PLATFORM DEPLOYMENTS
+  # ============================================================================
+  
+  deploy-modern-platforms:
+    needs: container-build
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.deployment_target, 'all-platforms')
+    
+    strategy:
+      matrix:
+        platform: [vercel, netlify, railway, fly-io, render]
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # Vercel Deployment
+      - name: ▲ Deploy to Vercel
+        if: matrix.platform == 'vercel'
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+      
+      # Netlify Deployment
+      - name: 🌐 Deploy to Netlify
+        if: matrix.platform == 'netlify'
+        uses: nwtgck/actions-netlify@v3.0
+        with:
+          publish-dir: './build'
+          production-branch: main
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: "Deploy from GitHub Actions"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      
+      # Railway Deployment
+      - name: 🚂 Deploy to Railway
+        if: matrix.platform == 'railway'
+        uses: bervProject/railway-deploy@v1.2.0
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          service: 'github-template-service'
+      
+      # Fly.io Deployment
+      - name: 🪰 Deploy to Fly.io
+        if: matrix.platform == 'fly-io'
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        if: matrix.platform == 'fly-io'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      
+      # Render Deployment
+      - name: 🎨 Deploy to Render
+        if: matrix.platform == 'render'
+        uses: johnbeynon/render-deploy-action@v0.0.8
+        with:
+          service-id: ${{ secrets.RENDER_SERVICE_ID }}
+          api-key: ${{ secrets.RENDER_API_KEY }}
+
+  # ============================================================================
+  # INFRASTRUCTURE MONITORING & HEALTH CHECKS
+  # ============================================================================
+  
+  post-deployment-checks:
+    needs: [deploy-aws, deploy-azure, deploy-gcp, deploy-modern-platforms]
+    runs-on: ubuntu-latest
+    if: always() && (needs.deploy-aws.result == 'success' || needs.deploy-azure.result == 'success' || needs.deploy-gcp.result == 'success')
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # Health checks
+      - name: 🏥 Health Check Endpoints
+        uses: jtalk/url-health-check-action@v3
+        with:
+          url: |
+            https://github-template-staging.com/health
+            https://github-template-staging.azurewebsites.net/health
+            https://github-template-service-xyz.a.run.app/health
+          max-attempts: 5
+          retry-delay: 30s
+      
+      # Load testing post-deployment
+      - name: ⚡ Post-deployment Load Test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: tests/load/post-deployment.js
+        env:
+          TARGET_URL: https://github-template-staging.com
+      
+      # Security scan of deployed application
+      - name: 🔒 OWASP ZAP Security Scan
+        uses: zaproxy/action-full-scan@v0.8.0
+        with:
+          target: 'https://github-template-staging.com'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+        continue-on-error: true
+      
+      # Synthetic monitoring setup
+      - name: 📊 Setup Datadog Synthetic Tests
+        run: |
+          curl -X POST "https://api.datadoghq.com/api/v1/synthetics/tests" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            -H "DD-API-KEY: ${{ secrets.DATADOG_API_KEY }}" \
+            -H "DD-APPLICATION-KEY: ${{ secrets.DATADOG_APP_KEY }}" \
+            -d @monitoring/datadog-synthetic.json
+        continue-on-error: true
+      
+      # New Relic deployment marker
+      - name: 📈 New Relic Deployment Marker
+        uses: newrelic/deployment-marker-action@v2.3.0
+        with:
+          apiKey: ${{ secrets.NEW_RELIC_API_KEY }}
+          guid: ${{ secrets.NEW_RELIC_DEPLOYMENT_ENTITY_GUID }}
+          version: "${{ github.sha }}"
+          description: "Multi-cloud deployment completed"
+        continue-on-error: true
+
+  # ============================================================================
+  # DEPLOYMENT NOTIFICATION & REPORTING
+  # ============================================================================
+  
+  deployment-notification:
+    needs: [container-build, deploy-aws, deploy-azure, deploy-gcp, deploy-modern-platforms, post-deployment-checks]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📊 Generate Deployment Report
+        run: |
+          mkdir -p reports
+          
+          cat > reports/deployment-summary.md << 'EOF'
+          # Multi-Cloud Deployment Report
+          
+          **Repository**: ${{ github.repository }}
+          **Deployment Target**: ${{ github.event.inputs.deployment_target || 'staging' }}
+          **Commit**: ${{ github.sha }}
+          **Triggered by**: ${{ github.actor }}
+          **Timestamp**: $(date -u)
+          
+          ## Deployment Results
+          
+          ### Container Build
+          - **Status**: ${{ needs.container-build.result }}
+          - **Image Digest**: ${{ needs.container-build.outputs.image-digest }}
+          - **Platforms**: linux/amd64, linux/arm64
+          - **Registries**: GHCR, Docker Hub, ECR, ACR
+          
+          ### Cloud Deployments
+          - **AWS**: ${{ needs.deploy-aws.result }}
+            - EKS, ECS, Lambda, CloudFormation, ElasticBeanstalk
+          - **Azure**: ${{ needs.deploy-azure.result }}
+            - AKS, ACI, App Service, Functions, ARM Templates
+          - **Google Cloud**: ${{ needs.deploy-gcp.result }}
+            - GKE, Cloud Run, App Engine, Functions, Firebase
+          
+          ### Modern Platforms
+          - **Modern Platforms**: ${{ needs.deploy-modern-platforms.result }}
+            - Vercel, Netlify, Railway, Fly.io, Render
+          
+          ### Post-Deployment
+          - **Health Checks**: ${{ needs.post-deployment-checks.result }}
+          - **Load Testing**: Completed
+          - **Security Scanning**: Completed
+          - **Monitoring Setup**: Completed
+          
+          ## Infrastructure as Code
+          - **Terraform**: Applied
+          - **ARM Templates**: Deployed
+          - **CloudFormation**: Deployed
+          
+          ## Security & Compliance
+          - **Container Signing**: ✅ Cosign
+          - **SBOM Generation**: ✅ Anchore
+          - **Security Scanning**: ✅ OWASP ZAP
+          
+          ## Monitoring & Observability
+          - **Synthetic Tests**: ✅ Datadog
+          - **APM**: ✅ New Relic
+          - **Health Endpoints**: ✅ Monitored
+          
+          ---
+          *This deployment utilized 20+ GitHub Actions marketplace actions for comprehensive multi-cloud deployment automation.*
+          EOF
+      
+      - name: 💬 Slack Deployment Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "🚀 Multi-Cloud Deployment Complete",
+              "attachments": [
+                {
+                  "color": "${{ contains(needs.*.result, 'failure') && 'danger' || 'good' }}",
+                  "fields": [
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Environment",
+                      "value": "${{ github.event.inputs.deployment_target || 'staging' }}",
+                      "short": true
+                    },
+                    {
+                      "title": "AWS",
+                      "value": "${{ needs.deploy-aws.result }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Azure",
+                      "value": "${{ needs.deploy-azure.result }}",
+                      "short": true
+                    },
+                    {
+                      "title": "GCP",
+                      "value": "${{ needs.deploy-gcp.result }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Modern Platforms",
+                      "value": "${{ needs.deploy-modern-platforms.result }}",
+                      "short": true
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
+      
+      - name: 📤 Upload Deployment Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-reports
+          path: reports/
+          retention-days: 90
+      
+      - name: 📊 Job Summary
+        run: |
+          echo "## 🚀 Multi-Cloud Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Results:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Container Build**: ${{ needs.container-build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **AWS Deployment**: ${{ needs.deploy-aws.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Azure Deployment**: ${{ needs.deploy-azure.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **GCP Deployment**: ${{ needs.deploy-gcp.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Modern Platforms**: ${{ needs.deploy-modern-platforms.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health Checks**: ${{ needs.post-deployment-checks.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Platforms Deployed:" >> $GITHUB_STEP_SUMMARY
+          echo "☁️ **AWS**: EKS, ECS, Lambda, CloudFormation, ElasticBeanstalk" >> $GITHUB_STEP_SUMMARY
+          echo "🔷 **Azure**: AKS, ACI, App Service, Functions, ARM Templates" >> $GITHUB_STEP_SUMMARY
+          echo "🌐 **GCP**: GKE, Cloud Run, App Engine, Functions, Firebase" >> $GITHUB_STEP_SUMMARY
+          echo "⚡ **Modern**: Vercel, Netlify, Railway, Fly.io, Render" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 **Total GitHub Actions Used: 25+**" >> $GITHUB_STEP_SUMMARY

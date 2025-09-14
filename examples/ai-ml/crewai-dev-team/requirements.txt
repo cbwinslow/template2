@@ -1,0 +1,22 @@
+# CrewAI Development Team Requirements
+crewai==0.28.8
+crewai-tools==0.4.26
+langchain-openai==0.1.6
+langchain-community==0.0.32
+python-dotenv==1.0.1
+pydantic==2.6.4
+openai==1.14.2
+
+# Additional tools for enhanced functionality
+requests==2.31.0
+beautifulsoup4==4.12.3
+pandas==2.2.1
+numpy==1.26.4
+matplotlib==3.8.3
+seaborn==0.13.2
+
+# Development and testing
+pytest==8.1.1
+black==24.3.0
+flake8==7.0.0
+mypy==1.9.0
