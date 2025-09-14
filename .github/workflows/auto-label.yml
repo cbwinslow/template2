@@ -1,0 +1,105 @@
+name: Issue Auto-Labeler
+
+on:
+  issues:
+    types: [opened, edited]
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Label Issues and PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { context, github } = require('@actions/github');
+            
+            const labels = [];
+            const title = context.payload.issue?.title || context.payload.pull_request?.title || '';
+            const body = context.payload.issue?.body || context.payload.pull_request?.body || '';
+            const content = (title + ' ' + body).toLowerCase();
+            
+            // Language-based labels
+            if (content.includes('python') || content.includes('pip') || content.includes('fastapi') || content.includes('django') || content.includes('flask')) {
+              labels.push('python');
+            }
+            
+            if (content.includes('node') || content.includes('npm') || content.includes('typescript') || content.includes('javascript') || content.includes('express') || content.includes('react') || content.includes('vue')) {
+              labels.push('nodejs');
+            }
+            
+            if (content.includes('go') || content.includes('golang') || content.includes('gin')) {
+              labels.push('go');
+            }
+            
+            if (content.includes('java') || content.includes('spring') || content.includes('maven') || content.includes('gradle')) {
+              labels.push('java');
+            }
+            
+            if (content.includes('docker') || content.includes('container')) {
+              labels.push('docker');
+            }
+            
+            // Type-based labels
+            if (content.includes('bug') || content.includes('error') || content.includes('issue') || content.includes('problem')) {
+              labels.push('bug');
+            }
+            
+            if (content.includes('feature') || content.includes('enhancement') || content.includes('improvement')) {
+              labels.push('enhancement');
+            }
+            
+            if (content.includes('documentation') || content.includes('docs') || content.includes('readme')) {
+              labels.push('documentation');
+            }
+            
+            if (content.includes('test') || content.includes('testing')) {
+              labels.push('testing');
+            }
+            
+            if (content.includes('security') || content.includes('vulnerability')) {
+              labels.push('security');
+            }
+            
+            if (content.includes('performance') || content.includes('optimization') || content.includes('speed')) {
+              labels.push('performance');
+            }
+            
+            if (content.includes('ci/cd') || content.includes('github actions') || content.includes('workflow')) {
+              labels.push('ci/cd');
+            }
+            
+            // Priority labels based on keywords
+            if (content.includes('critical') || content.includes('urgent') || content.includes('breaking')) {
+              labels.push('priority: high');
+            }
+            
+            if (content.includes('question') || content.includes('help') || content.includes('how to')) {
+              labels.push('question');
+            }
+            
+            // Good first issue detection
+            if (content.includes('good first') || content.includes('beginner') || content.includes('easy')) {
+              labels.push('good first issue');
+            }
+            
+            // Apply labels if any were found
+            if (labels.length > 0) {
+              const issueNumber = context.payload.issue?.number || context.payload.pull_request?.number;
+              
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: labels
+              });
+              
+              console.log(`Applied labels: ${labels.join(', ')}`);
+            }
