@@ -1,5 +1,5 @@
 # Multi-stage Go Dockerfile
-FROM golang:1.21-alpine AS base
+FROM golang:1.25-alpine AS base
 
 # Install necessary packages
 RUN apk add --no-cache git ca-certificates tzdata
