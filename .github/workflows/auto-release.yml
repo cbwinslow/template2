@@ -1,0 +1,55 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - '.github/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, 'skip-release')"
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install semantic-release
+        run: |
+          npm install -g semantic-release @semantic-release/changelog @semantic-release/git
+          
+      - name: Generate changelog
+        run: |
+          # Create a simple changelog based on commits
+          echo "# Changelog" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "## [Unreleased]" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          git log --oneline --since="1 week ago" --pretty=format:"- %s" >> CHANGELOG.md
+          
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the current version or set to 1.0.0
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          NEW_VERSION=$(echo $VERSION | sed 's/v//' | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
+          
+          # Create release
+          gh release create "v$NEW_VERSION" \
+            --title "Release v$NEW_VERSION" \
+            --notes-file CHANGELOG.md \
+            --generate-notes

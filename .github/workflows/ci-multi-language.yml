@@ -1,0 +1,221 @@
+name: Multi-Language CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.changes.outputs.python }}
+      nodejs: ${{ steps.changes.outputs.nodejs }}
+      go: ${{ steps.changes.outputs.go }}
+      java: ${{ steps.changes.outputs.java }}
+      dotnet: ${{ steps.changes.outputs.dotnet }}
+      docker: ${{ steps.changes.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            python:
+              - 'examples/python/**'
+              - 'pyproject.toml'
+              - 'requirements*.txt'
+            nodejs:
+              - 'examples/nodejs/**'
+              - 'package*.json'
+              - 'yarn.lock'
+            go:
+              - 'examples/go/**'
+              - 'go.mod'
+              - 'go.sum'
+            java:
+              - 'examples/java/**'
+              - 'pom.xml'
+              - 'build.gradle*'
+            dotnet:
+              - 'examples/dotnet/**'
+              - '*.csproj'
+              - '*.sln'
+            docker:
+              - '**/Dockerfile*'
+              - 'docker-compose*.yml'
+
+  python-ci:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11, 3.12]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry pytest black flake8 mypy
+          if [ -f examples/python/requirements.txt ]; then pip install -r examples/python/requirements.txt; fi
+          
+      - name: Lint with flake8
+        run: |
+          flake8 examples/python --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 examples/python --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          
+      - name: Format check with black
+        run: black --check examples/python
+        
+      - name: Type check with mypy
+        run: mypy examples/python || true
+        
+      - name: Test with pytest
+        run: |
+          cd examples/python && python -m pytest tests/ -v --cov=./ --cov-report=xml
+          
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./examples/python/coverage.xml
+          flags: python
+
+  nodejs-ci:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.nodejs == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 21]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: examples/nodejs/package-lock.json
+          
+      - name: Install dependencies
+        run: |
+          cd examples/nodejs && npm ci
+          
+      - name: Lint
+        run: |
+          cd examples/nodejs && npm run lint
+          
+      - name: Type check
+        run: |
+          cd examples/nodejs && npm run type-check
+          
+      - name: Test
+        run: |
+          cd examples/nodejs && npm test
+          
+      - name: Build
+        run: |
+          cd examples/nodejs && npm run build
+
+  go-ci:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [1.20, 1.21]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+          
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+            
+      - name: Install dependencies
+        run: |
+          cd examples/go && go mod download
+          
+      - name: Lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          working-directory: examples/go
+          
+      - name: Test
+        run: |
+          cd examples/go && go test -v -race -coverprofile=coverage.out ./...
+          
+      - name: Build
+        run: |
+          cd examples/go && go build -v ./...
+
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  docker-build:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Build Docker images
+        run: |
+          find . -name "Dockerfile*" -not -path "./.git/*" | while read dockerfile; do
+            dir=$(dirname "$dockerfile")
+            echo "Building Docker image in $dir"
+            docker build -t test-image:latest -f "$dockerfile" "$dir"
+          done

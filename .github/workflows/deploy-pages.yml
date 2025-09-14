@@ -1,0 +1,110 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+        
+      - name: Install dependencies
+        run: |
+          npm install -g @11ty/eleventy
+          npm install
+          
+      - name: Build documentation site
+        run: |
+          mkdir -p dist
+          # Create a simple index.html showcasing the repository
+          cat > dist/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Template2 - GitHub Features Showcase</title>
+              <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; margin: 40px; }
+                  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 8px; margin-bottom: 2rem; }
+                  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin: 2rem 0; }
+                  .feature-card { border: 1px solid #e1e4e8; border-radius: 8px; padding: 1rem; }
+                  .badge { background: #f1f8ff; color: #0366d6; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; }
+              </style>
+          </head>
+          <body>
+              <div class="header">
+                  <h1>🚀 Template2 Repository</h1>
+                  <p>A comprehensive showcase of GitHub features, workflows, and modern development practices</p>
+              </div>
+              
+              <div class="feature-grid">
+                  <div class="feature-card">
+                      <h3>🔄 CI/CD Workflows</h3>
+                      <span class="badge">Multi-language</span>
+                      <p>Automated testing and deployment for Python, Node.js, Go, Java, and .NET</p>
+                  </div>
+                  
+                  <div class="feature-card">
+                      <h3>🔒 Security Scanning</h3>
+                      <span class="badge">CodeQL</span>
+                      <p>Automated security analysis and vulnerability detection</p>
+                  </div>
+                  
+                  <div class="feature-card">
+                      <h3>🤖 AI Integration</h3>
+                      <span class="badge">GitHub Copilot</span>
+                      <p>AI-powered development assistance and automation</p>
+                  </div>
+                  
+                  <div class="feature-card">
+                      <h3>📦 Container Support</h3>
+                      <span class="badge">Docker</span>
+                      <p>Multi-stage Docker builds and container orchestration</p>
+                  </div>
+              </div>
+              
+              <footer style="margin-top: 3rem; text-align: center; color: #666;">
+                  <p>Built with ❤️ using GitHub Actions and Pages</p>
+              </footer>
+          </body>
+          </html>
+          EOF
+          
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: ./dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2

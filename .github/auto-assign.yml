@@ -1,0 +1,164 @@
+# Auto-assign configuration for issues and pull requests
+# Automatically assigns reviewers, assignees, and adds labels
+
+# Configuration for pull requests
+pullRequestReviewers:
+  - cbwinslow
+
+# Number of reviewers to add
+numberOfReviewers: 1
+
+# Assignees for pull requests
+pullRequestAssignees:
+  - cbwinslow
+
+# Number of assignees to add
+numberOfAssignees: 1
+
+# Add reviewers as assignees
+addReviewersAsAssignees: true
+
+# Add assignees as reviewers
+addAssigneesAsReviewers: true
+
+# Skip keywords that will prevent auto-assignment
+skipKeywords:
+  - "wip"
+  - "WIP"
+  - "work in progress"
+  - "Work In Progress"
+  - "do not merge"
+  - "DO NOT MERGE"
+  - "draft"
+  - "DRAFT"
+
+# Skip draft PRs
+skipDrafts: true
+
+# Review assignment based on files changed
+reviewGroups:
+  backend:
+    reviewers:
+      - cbwinslow
+    files:
+      - "examples/python/**/*"
+      - "examples/java/**/*"
+      - "examples/go/**/*"
+      - "**/*.py"
+      - "**/*.java"
+      - "**/*.go"
+      - "**/Dockerfile"
+      - "docker-compose.yml"
+      - "**/*.sql"
+  
+  frontend:
+    reviewers:
+      - cbwinslow
+    files:
+      - "examples/nodejs/**/*"
+      - "**/*.js"
+      - "**/*.ts"
+      - "**/*.jsx"
+      - "**/*.tsx"
+      - "**/*.html"
+      - "**/*.css"
+      - "**/*.scss"
+      - "**/*.vue"
+      - "package.json"
+      - "package-lock.json"
+      - "yarn.lock"
+  
+  infrastructure:
+    reviewers:
+      - cbwinslow
+    files:
+      - ".github/workflows/**/*"
+      - "infrastructure/**/*"
+      - "terraform/**/*"
+      - "k8s/**/*"
+      - "helm/**/*"
+      - "**/*.tf"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/Chart.yaml"
+      - "**/values.yaml"
+  
+  documentation:
+    reviewers:
+      - cbwinslow
+    files:
+      - "**/*.md"
+      - "docs/**/*"
+      - "README*"
+      - "CHANGELOG*"
+      - "CONTRIBUTING*"
+      - "LICENSE*"
+  
+  security:
+    reviewers:
+      - cbwinslow
+    files:
+      - ".github/dependabot.yml"
+      - ".github/renovate.json"
+      - "SECURITY.md"
+      - "**/*security*"
+      - "**/*vuln*"
+  
+  ai-ml:
+    reviewers:
+      - cbwinslow
+    files:
+      - "examples/ai-ml/**/*"
+      - "ai-configs/**/*"
+      - "prompts/**/*"
+      - "**/*crew*"
+      - "**/*ai*"
+      - "**/*ml*"
+
+# Configuration for issues
+issueAssignees:
+  - cbwinslow
+
+# Number of assignees for issues
+numberOfIssueAssignees: 1
+
+# Issue assignment based on labels
+issueGroups:
+  bug:
+    assignees:
+      - cbwinslow
+    labels:
+      - bug
+      - error
+      - issue
+  
+  enhancement:
+    assignees:
+      - cbwinslow
+    labels:
+      - enhancement
+      - feature
+      - improvement
+  
+  documentation:
+    assignees:
+      - cbwinslow
+    labels:
+      - documentation
+      - docs
+  
+  security:
+    assignees:
+      - cbwinslow
+    labels:
+      - security
+      - vulnerability
+      - cve
+  
+  help-wanted:
+    assignees:
+      - cbwinslow
+    labels:
+      - "help wanted"
+      - "good first issue"
+      - community

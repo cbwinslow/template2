@@ -1,0 +1,506 @@
+name: 🔒 Advanced Security & Compliance Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of security scan'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - secrets
+          - dependencies
+          - code-analysis
+          - compliance
+
+jobs:
+  # ============================================================================
+  # SECRET SCANNING & LEAK DETECTION
+  # ============================================================================
+  
+  secret-scanning:
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.scan_type, 'full') || contains(github.event.inputs.scan_type, 'secrets')
+    
+    permissions:
+      security-events: write
+      contents: read
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      # GitLeaks - Advanced secret detection
+      - name: 🕵️ GitLeaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # TruffleHog - Enterprise secret scanning
+      - name: 🐷 TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+      
+      # Yelp's detect-secrets
+      - name: 🔐 Detect Secrets
+        uses: reviewdog/action-detect-secrets@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+      
+      # SpectralOps secret scanning
+      - name: 👻 SpectralOps Scan
+        uses: spectralops/spectral-github-action@v3
+        with:
+          spectral-dsn: ${{ secrets.SPECTRAL_DSN }}
+          spectral-args: scan --ok --engines secrets,oss,iac --include-tags base,audit
+        continue-on-error: true
+
+  # ============================================================================
+  # DEPENDENCY & SUPPLY CHAIN SECURITY
+  # ============================================================================
+  
+  dependency-security:
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.scan_type, 'full') || contains(github.event.inputs.scan_type, 'dependencies')
+    
+    permissions:
+      security-events: write
+      contents: read
+    
+    strategy:
+      matrix:
+        ecosystem: [npm, pip, maven, go]
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # Snyk dependency scanning
+      - name: 🛡️ Snyk Dependency Scan
+        uses: snyk/actions/setup@master
+      - name: Snyk test
+        run: snyk test --all-projects --severity-threshold=medium
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+      
+      # FOSSA license and vulnerability scanning
+      - name: 📜 FOSSA Scan
+        uses: fossas/fossa-action@main
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+        continue-on-error: true
+      
+      # WhiteSource Bolt (now Mend)
+      - name: 🔍 Mend (WhiteSource) Scan
+        uses: whitesource/ws-bolt-github-action@main
+        with:
+          wss_product_name: 'GitHub-Actions-Template'
+          wss_product_token: ${{ secrets.WSS_PRODUCT_TOKEN }}
+          wss_user_key: ${{ secrets.WSS_USER_KEY }}
+        continue-on-error: true
+      
+      # JFrog Xray scanning
+      - name: 🐸 JFrog Xray Scan
+        uses: jfrog/setup-jfrog-cli@v3
+        with:
+          version: latest
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+      - run: |
+          jf docker scan --licenses --vulnerabilities ghcr.io/${{ github.repository }}:latest
+        continue-on-error: true
+      
+      # Prisma Cloud (Twistlock) scanning
+      - name: ☁️ Prisma Cloud Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: dockerfile,secrets,github_actions
+          output_format: sarif
+          output_file_path: reports/checkov.sarif
+        continue-on-error: true
+      
+      - name: Upload Checkov results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/checkov.sarif
+        continue-on-error: true
+
+  # ============================================================================
+  # STATIC APPLICATION SECURITY TESTING (SAST)
+  # ============================================================================
+  
+  sast-analysis:
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.scan_type, 'full') || contains(github.event.inputs.scan_type, 'code-analysis')
+    
+    permissions:
+      security-events: write
+      contents: read
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      # CodeQL Analysis (GitHub's SAST)
+      - name: 🔍 Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript,python,java,go
+          queries: security-extended,security-and-quality
+      
+      - name: 🏗️ Autobuild
+        uses: github/codeql-action/autobuild@v3
+      
+      - name: 🔍 Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+      
+      # Semgrep SAST
+      - name: 🔍 Semgrep SAST
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/ci
+            p/owasp-top-ten
+            p/cwe-top-25
+            p/r2c-security-audit
+            p/r2c-bug-scan
+      
+      # SonarCloud SAST
+      - name: 📊 SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      
+      # Veracode Static Analysis
+      - name: ✅ Veracode Upload And Scan
+        uses: veracode/veracode-uploadandscan-action@0.2.6
+        with:
+          appname: 'GitHub-Actions-Template'
+          createprofile: false
+          filepath: './build-output/'
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
+        continue-on-error: true
+      
+      # Fortify SAST
+      - name: 🛡️ Fortify SAST Scan
+        uses: fortify/github-action@v1
+        with:
+          sast-scan: true
+        env:
+          FOD_URL: ${{ secrets.FOD_BASE_URL }}
+          FOD_TENANT: ${{ secrets.FOD_TENANT }}
+          FOD_USER: ${{ secrets.FOD_USER }}
+          FOD_PAT: ${{ secrets.FOD_PAT }}
+        continue-on-error: true
+      
+      # Checkmarx SAST
+      - name: 🔍 Checkmarx CxFlow Action
+        uses: checkmarx-ts/checkmarx-cxflow-github-action@v1.6
+        with:
+          project: ${{ github.repository }}
+          team: /CxServer/SP/Checkmarx
+          checkmarx_url: ${{ secrets.CHECKMARX_URL }}
+          checkmarx_username: ${{ secrets.CHECKMARX_USERNAME }}
+          checkmarx_password: ${{ secrets.CHECKMARX_PASSWORD }}
+          checkmarx_client_secret: ${{ secrets.CHECKMARX_CLIENT_SECRET }}
+        continue-on-error: true
+
+  # ============================================================================
+  # INFRASTRUCTURE AS CODE (IaC) SECURITY
+  # ============================================================================
+  
+  iac-security:
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.scan_type, 'full') || contains(github.event.inputs.scan_type, 'code-analysis')
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # Checkov IaC scanning
+      - name: 🔧 Checkov IaC Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform,cloudformation,kubernetes,dockerfile,github_actions
+          output_format: sarif
+          output_file_path: reports/checkov.sarif
+          api-key: ${{ secrets.PRISMA_CLOUD_API_KEY }}
+      
+      # Terrascan IaC security
+      - name: 🌍 Terrascan IaC Scanner
+        uses: tenable/terrascan-action@main
+        with:
+          iac_type: 'terraform'
+          iac_version: 'v14'
+          policy_type: 'aws'
+          only_warn: true
+          sarif_upload: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # TFSec Terraform security scanner
+      - name: 🔒 TFSec Terraform Security
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          soft_fail: true
+      
+      # KICS (Keeping Infrastructure as Code Secure)
+      - name: 🔐 KICS Scan
+        uses: checkmarx/kics-github-action@v1.7.0
+        with:
+          path: '.'
+          fail_on: high
+          output_formats: 'json,sarif'
+          output_path: kics-results
+        continue-on-error: true
+      
+      - name: Upload KICS results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'kics-results/results.sarif'
+        continue-on-error: true
+
+  # ============================================================================
+  # CONTAINER SECURITY SCANNING
+  # ============================================================================
+  
+  container-security:
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.scan_type, 'full')
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # Trivy container scanning
+      - name: 🔍 Trivy Container Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'alpine:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      # Anchore Grype vulnerability scanner
+      - name: ⚓ Anchore Grype Scan
+        uses: anchore/scan-action@v3
+        with:
+          image: "alpine:latest"
+          fail-build: false
+          severity-cutoff: medium
+      
+      # Snyk Container scanning
+      - name: 🐳 Snyk Container Monitor
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: alpine:latest
+          args: --severity-threshold=medium
+        continue-on-error: true
+      
+      # Docker Scout (Docker's vulnerability scanner)
+      - name: 🔍 Docker Scout CVE Scan
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: alpine:latest
+          sarif-file: scout-report.sarif
+          summary: true
+        continue-on-error: true
+
+  # ============================================================================
+  # COMPLIANCE & GOVERNANCE
+  # ============================================================================
+  
+  compliance-check:
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.scan_type, 'full') || contains(github.event.inputs.scan_type, 'compliance')
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      # Policy as Code with OPA
+      - name: 📋 Open Policy Agent (OPA) Conftest
+        uses: instrumenta/conftest-action@master
+        with:
+          files: '.github/workflows/*.yml'
+          policy: 'security-policies'
+        continue-on-error: true
+      
+      # SLSA Provenance Generation
+      - name: 🔗 Generate SLSA Provenance
+        uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.9.0
+        with:
+          base64-subjects: "${{ steps.hash.outputs.base64-subjects }}"
+          provenance-name: "provenance-${{ github.run_id }}.intoto.jsonl"
+        continue-on-error: true
+      
+      # CIS Benchmarks
+      - name: 🏛️ CIS Benchmarks Check
+        run: |
+          # Example CIS benchmark checks
+          echo "Running CIS benchmark compliance checks..."
+          # This would typically run actual CIS benchmark tools
+          docker run --rm -v "$(pwd)":/workspace cisecurity/cis-docker-benchmark
+        continue-on-error: true
+      
+      # License compliance check
+      - name: 📜 License Compliance Check
+        uses: fossa-contrib/fossa-action@v2
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+          project: github.com/${{ github.repository }}
+        continue-on-error: true
+
+  # ============================================================================
+  # SECURITY REPORTING & NOTIFICATION
+  # ============================================================================
+  
+  security-reporting:
+    needs: [secret-scanning, dependency-security, sast-analysis, iac-security, container-security, compliance-check]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    permissions:
+      security-events: write
+      contents: read
+      issues: write
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 📊 Aggregate Security Results
+        run: |
+          mkdir -p security-reports
+          
+          echo "# Security & Compliance Report" > security-reports/summary.md
+          echo "Generated: $(date -u)" >> security-reports/summary.md
+          echo "" >> security-reports/summary.md
+          
+          echo "## Job Results" >> security-reports/summary.md
+          echo "- Secret Scanning: ${{ needs.secret-scanning.result }}" >> security-reports/summary.md
+          echo "- Dependency Security: ${{ needs.dependency-security.result }}" >> security-reports/summary.md
+          echo "- SAST Analysis: ${{ needs.sast-analysis.result }}" >> security-reports/summary.md
+          echo "- IaC Security: ${{ needs.iac-security.result }}" >> security-reports/summary.md
+          echo "- Container Security: ${{ needs.container-security.result }}" >> security-reports/summary.md
+          echo "- Compliance Check: ${{ needs.compliance-check.result }}" >> security-reports/summary.md
+          echo "" >> security-reports/summary.md
+          
+          echo "## Tools Used" >> security-reports/summary.md
+          echo "### Secret Detection:" >> security-reports/summary.md
+          echo "- GitLeaks, TruffleHog, Detect-Secrets, SpectralOps" >> security-reports/summary.md
+          echo "" >> security-reports/summary.md
+          echo "### Dependency Security:" >> security-reports/summary.md
+          echo "- Snyk, FOSSA, Mend, JFrog Xray, Prisma Cloud" >> security-reports/summary.md
+          echo "" >> security-reports/summary.md
+          echo "### SAST:" >> security-reports/summary.md
+          echo "- CodeQL, Semgrep, SonarCloud, Veracode, Fortify, Checkmarx" >> security-reports/summary.md
+          echo "" >> security-reports/summary.md
+          echo "### IaC Security:" >> security-reports/summary.md
+          echo "- Checkov, Terrascan, TFSec, KICS" >> security-reports/summary.md
+          echo "" >> security-reports/summary.md
+          echo "### Container Security:" >> security-reports/summary.md
+          echo "- Trivy, Anchore Grype, Snyk Container, Docker Scout" >> security-reports/summary.md
+          echo "" >> security-reports/summary.md
+          echo "### Compliance:" >> security-reports/summary.md
+          echo "- OPA Conftest, SLSA Provenance, CIS Benchmarks, FOSSA" >> security-reports/summary.md
+      
+      - name: 📤 Upload Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-compliance-reports
+          path: security-reports/
+          retention-days: 90
+      
+      - name: 🚨 Create Security Issue (if failures)
+        if: contains(needs.*.result, 'failure')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '🚨 Security Scan Failures Detected';
+            const body = `
+            ## Security Scan Results
+            
+            One or more security scans have failed. Please review the results:
+            
+            - **Secret Scanning**: ${{ needs.secret-scanning.result }}
+            - **Dependency Security**: ${{ needs.dependency-security.result }}
+            - **SAST Analysis**: ${{ needs.sast-analysis.result }}
+            - **IaC Security**: ${{ needs.iac-security.result }}
+            - **Container Security**: ${{ needs.container-security.result }}
+            - **Compliance Check**: ${{ needs.compliance-check.result }}
+            
+            **Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            Please address any security issues found and re-run the security scans.
+            `;
+            
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['security', 'automated', 'priority-high']
+            });
+      
+      - name: 💬 Security Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "🔒 Security & Compliance Scan Complete",
+              "attachments": [
+                {
+                  "color": "${{ contains(needs.*.result, 'failure') && 'danger' || 'good' }}",
+                  "fields": [
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Status",
+                      "value": "${{ contains(needs.*.result, 'failure') && '❌ Issues Found' || '✅ All Clear' }}",
+                      "short": true
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()

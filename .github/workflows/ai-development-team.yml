@@ -1,0 +1,210 @@
+name: 🤖 AI Development Team Review
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      analysis_type:
+        description: 'Type of analysis to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - code-review
+          - architecture
+          - documentation
+          - security
+          - devops
+
+jobs:
+  ai-development-team:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      security-events: write
+    
+    strategy:
+      matrix:
+        python-version: ['3.11']
+    
+    steps:
+      - name: 🔍 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+      
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      
+      - name: 📦 Install CrewAI Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r examples/ai-ml/crewai-dev-team/requirements.txt
+      
+      - name: 🔧 Configure Environment
+        run: |
+          # Create reports directory
+          mkdir -p reports
+          
+          # Set up environment variables
+          echo "PROJECT_PATH=${{ github.workspace }}" >> $GITHUB_ENV
+          echo "REPORTS_DIR=${{ github.workspace }}/reports" >> $GITHUB_ENV
+          echo "CREW_VERBOSE=true" >> $GITHUB_ENV
+      
+      - name: 🤖 Run AI Development Team Analysis
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANALYSIS_TYPE: ${{ github.event.inputs.analysis_type || 'full' }}
+        run: |
+          cd examples/ai-ml/crewai-dev-team
+          
+          # Run the AI crew analysis
+          python crew.py --path ${{ github.workspace }}
+        continue-on-error: true
+      
+      - name: 📊 Process Analysis Results
+        id: process-results
+        run: |
+          # Check if reports were generated
+          if [ -d "reports" ] && [ "$(ls -A reports)" ]; then
+            echo "reports_generated=true" >> $GITHUB_OUTPUT
+            
+            # Count findings
+            report_file=$(ls reports/analysis_report_*.md | head -1)
+            if [ -f "$report_file" ]; then
+              echo "report_file=$report_file" >> $GITHUB_OUTPUT
+              
+              # Extract key metrics
+              code_issues=$(grep -c "❌\|⚠️\|🔴" "$report_file" || echo "0")
+              security_issues=$(grep -c -i "security\|vulnerability\|cve" "$report_file" || echo "0")
+              suggestions=$(grep -c "💡\|📝\|✅" "$report_file" || echo "0")
+              
+              echo "code_issues=$code_issues" >> $GITHUB_OUTPUT
+              echo "security_issues=$security_issues" >> $GITHUB_OUTPUT
+              echo "suggestions=$suggestions" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "reports_generated=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 💬 Comment on PR with Results
+        if: github.event_name == 'pull_request' && steps.process-results.outputs.reports_generated == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            const reportFile = '${{ steps.process-results.outputs.report_file }}';
+            const codeIssues = '${{ steps.process-results.outputs.code_issues }}';
+            const securityIssues = '${{ steps.process-results.outputs.security_issues }}';
+            const suggestions = '${{ steps.process-results.outputs.suggestions }}';
+            
+            let comment = `## 🤖 AI Development Team Analysis Results\n\n`;
+            comment += `### 📊 Summary\n`;
+            comment += `- **Code Issues Found**: ${codeIssues}\n`;
+            comment += `- **Security Concerns**: ${securityIssues}\n`;
+            comment += `- **Improvement Suggestions**: ${suggestions}\n\n`;
+            
+            if (fs.existsSync(reportFile)) {
+              const report = fs.readFileSync(reportFile, 'utf8');
+              
+              // Extract executive summary (first 2000 chars)
+              const summary = report.substring(0, 2000);
+              comment += `### 📝 Executive Summary\n\n`;
+              comment += `\`\`\`\n${summary}...\n\`\`\`\n\n`;
+            }
+            
+            comment += `### 📋 Full Report\n`;
+            comment += `The complete analysis report is available in the workflow artifacts.\n\n`;
+            comment += `**Analyzed by**: AI Development Team (CrewAI)\n`;
+            comment += `**Analysis Type**: ${{ github.event.inputs.analysis_type || 'full' }}\n`;
+            comment += `**Timestamp**: ${new Date().toISOString()}\n\n`;
+            comment += `---\n`;
+            comment += `*This analysis was automatically generated. Review the full report for detailed findings and recommendations.*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+      
+      - name: 📤 Upload Analysis Reports
+        if: steps.process-results.outputs.reports_generated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-development-team-reports-${{ github.run_number }}
+          path: |
+            reports/
+            *.log
+          retention-days: 30
+      
+      - name: 🔒 Upload Security Findings to GitHub Security
+        if: steps.process-results.outputs.security_issues != '0'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/security-findings.sarif
+        continue-on-error: true
+      
+      - name: 📈 Create Check Run Status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const conclusion = '${{ steps.process-results.outputs.reports_generated }}' === 'true' ? 'success' : 'failure';
+            const codeIssues = parseInt('${{ steps.process-results.outputs.code_issues }}') || 0;
+            const securityIssues = parseInt('${{ steps.process-results.outputs.security_issues }}') || 0;
+            
+            let summary = `AI Development Team Analysis Complete\n\n`;
+            summary += `📊 **Results Summary:**\n`;
+            summary += `- Code Issues: ${codeIssues}\n`;
+            summary += `- Security Issues: ${securityIssues}\n`;
+            summary += `- Suggestions: ${{ steps.process-results.outputs.suggestions }}\n\n`;
+            
+            if (securityIssues > 0) {
+              summary += `⚠️ **Security issues detected!** Please review the security findings.\n`;
+            }
+            
+            if (codeIssues > 10) {
+              summary += `⚠️ **High number of code issues detected.** Consider addressing before merging.\n`;
+            }
+            
+            github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'AI Development Team Analysis',
+              head_sha: context.sha,
+              status: 'completed',
+              conclusion: conclusion,
+              output: {
+                title: 'AI Development Team Analysis Results',
+                summary: summary
+              }
+            });
+
+  post-analysis:
+    needs: ai-development-team
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📊 Analysis Metrics
+        run: |
+          echo "🤖 AI Development Team Analysis completed"
+          echo "📈 Check the artifacts for detailed reports"
+          echo "🔍 Review any security findings in the Security tab"
+          
+          # You can add metrics collection here
+          # For example, send to monitoring systems, update dashboards, etc.

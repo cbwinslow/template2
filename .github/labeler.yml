@@ -1,0 +1,237 @@
+# Labeler configuration for automatic PR labeling
+# Labels PRs based on paths of changed files
+
+# Language-specific labels
+'lang: python':
+  - '**/*.py'
+  - '**/requirements*.txt'
+  - '**/pyproject.toml'
+  - '**/setup.py'
+  - '**/setup.cfg'
+  - '**/Pipfile*'
+  - 'examples/python/**/*'
+
+'lang: javascript':
+  - '**/*.js'
+  - '**/*.mjs'
+  - '**/*.cjs'
+  - 'examples/nodejs/**/*'
+
+'lang: typescript':
+  - '**/*.ts'
+  - '**/*.tsx'
+  - '**/tsconfig*.json'
+
+'lang: java':
+  - '**/*.java'
+  - '**/pom.xml'
+  - '**/build.gradle*'
+  - '**/gradle.properties'
+  - 'examples/java/**/*'
+
+'lang: go':
+  - '**/*.go'
+  - '**/go.mod'
+  - '**/go.sum'
+  - 'examples/go/**/*'
+
+'lang: shell':
+  - '**/*.sh'
+  - '**/*.bash'
+  - '**/*.zsh'
+  - 'scripts/**/*'
+
+# Framework and technology labels
+'framework: docker':
+  - '**/Dockerfile*'
+  - '**/docker-compose*.yml'
+  - '**/docker-compose*.yaml'
+  - '**/.dockerignore'
+
+'framework: kubernetes':
+  - 'k8s/**/*'
+  - 'kubernetes/**/*'
+  - '**/*k8s*.yml'
+  - '**/*k8s*.yaml'
+
+'framework: terraform':
+  - '**/*.tf'
+  - '**/*.tfvars'
+  - 'terraform/**/*'
+  - 'infrastructure/**/*'
+
+'framework: github-actions':
+  - '.github/workflows/**/*'
+  - '.github/actions/**/*'
+
+# Component-specific labels
+'component: frontend':
+  - '**/*.html'
+  - '**/*.css'
+  - '**/*.scss'
+  - '**/*.less'
+  - '**/*.vue'
+  - '**/*.jsx'
+  - '**/*.tsx'
+  - 'frontend/**/*'
+  - 'ui/**/*'
+  - 'web/**/*'
+
+'component: backend':
+  - 'backend/**/*'
+  - 'api/**/*'
+  - 'server/**/*'
+  - 'services/**/*'
+
+'component: database':
+  - '**/*.sql'
+  - '**/migrations/**/*'
+  - '**/schema/**/*'
+  - 'database/**/*'
+  - 'db/**/*'
+
+'component: tests':
+  - '**/*test*'
+  - '**/*spec*'
+  - 'tests/**/*'
+  - 'test/**/*'
+  - '__tests__/**/*'
+
+# Documentation labels
+'area: documentation':
+  - '**/*.md'
+  - '**/*.rst'
+  - '**/*.txt'
+  - 'docs/**/*'
+  - 'documentation/**/*'
+  - 'README*'
+  - 'CHANGELOG*'
+  - 'CONTRIBUTING*'
+
+# Configuration labels
+'area: configuration':
+  - '**/*.json'
+  - '**/*.yml'
+  - '**/*.yaml'
+  - '**/*.toml'
+  - '**/*.ini'
+  - '**/*.conf'
+  - '**/*.config'
+  - '.github/**/*'
+  - '.editorconfig'
+  - '.gitignore'
+  - '.gitattributes'
+
+# Security-related labels
+'area: security':
+  - 'SECURITY.md'
+  - '.github/dependabot.yml'
+  - '.github/renovate.json'
+  - '**/*security*'
+  - '**/*vuln*'
+  - '**/*cve*'
+
+# Dependency-related labels
+'area: dependencies':
+  - '**/package*.json'
+  - '**/yarn.lock'
+  - '**/requirements*.txt'
+  - '**/Pipfile*'
+  - '**/pom.xml'
+  - '**/build.gradle*'
+  - '**/go.mod'
+  - '**/go.sum'
+  - '**/Cargo.toml'
+  - '**/Cargo.lock'
+
+# CI/CD labels
+'area: ci-cd':
+  - '.github/workflows/**/*'
+  - '.github/actions/**/*'
+  - 'Jenkinsfile'
+  - '.gitlab-ci.yml'
+  - 'azure-pipelines.yml'
+  - '.circleci/**/*'
+  - '.travis.yml'
+
+# Infrastructure labels
+'area: infrastructure':
+  - 'infrastructure/**/*'
+  - 'terraform/**/*'
+  - 'cloudformation/**/*'
+  - 'helm/**/*'
+  - 'charts/**/*'
+  - 'deployment/**/*'
+  - 'deploy/**/*'
+
+# AI/ML labels
+'area: ai-ml':
+  - 'examples/ai-ml/**/*'
+  - 'ai-configs/**/*'
+  - 'prompts/**/*'
+  - '**/*crew*'
+  - '**/*ai*'
+  - '**/*ml*'
+  - '**/*model*'
+  - '**/*.ipynb'
+
+# Size-based labels (these work with file count)
+'size: xs':
+  - any: ['**/*']
+    count: 1
+
+'size: small':
+  - any: ['**/*']
+    count: 5
+
+'size: medium':
+  - any: ['**/*']
+    count: 20
+
+'size: large':
+  - any: ['**/*']
+    count: 50
+
+'size: xl':
+  - any: ['**/*']
+    count: 100
+
+# Priority labels based on file importance
+'priority: high':
+  - 'SECURITY.md'
+  - '.github/workflows/**/*'
+  - 'package.json'
+  - 'pom.xml'
+  - 'go.mod'
+  - 'requirements.txt'
+  - 'Dockerfile'
+  - 'docker-compose.yml'
+
+'priority: critical':
+  - 'README.md'
+  - 'LICENSE'
+  - '.github/dependabot.yml'
+  - '**/*security*'
+  - '**/*vuln*'
+
+# Type-based labels
+'type: feature':
+  - 'features/**/*'
+  - 'examples/**/*'
+
+'type: bugfix':
+  - 'fixes/**/*'
+  - 'bugfixes/**/*'
+
+'type: hotfix':
+  - 'hotfix/**/*'
+  - 'patches/**/*'
+
+'type: refactor':
+  - 'refactor/**/*'
+  - 'refactoring/**/*'
+
+'type: maintenance':
+  - '.github/**/*'
+  - 'scripts/**/*'
+  - 'tools/**/*'
