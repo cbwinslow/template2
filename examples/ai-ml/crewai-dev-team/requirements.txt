@@ -2,13 +2,13 @@
 crewai==0.28.8
 crewai-tools==0.4.26
 langchain-openai==0.1.6
-langchain-community==0.0.32
+langchain-community==0.3.27
 python-dotenv==1.0.1
 pydantic==2.6.4
 openai==1.14.2
 
 # Additional tools for enhanced functionality
-requests==2.31.0
+requests==2.32.4
 beautifulsoup4==4.12.3
 pandas==2.2.1
 numpy==1.26.4
