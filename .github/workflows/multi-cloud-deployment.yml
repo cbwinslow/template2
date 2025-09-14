@@ -517,7 +517,7 @@ jobs:
       
       # Security scan of deployed application
       - name: 🔒 OWASP ZAP Security Scan
-        uses: zaproxy/action-full-scan@v0.8.0
+        uses: zaproxy/action-full-scan@v0.12.0
         with:
           target: 'https://github-template-staging.com'
           rules_file_name: '.zap/rules.tsv'
