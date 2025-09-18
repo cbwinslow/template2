@@ -1,5 +1,5 @@
 # Multi-stage Node.js Dockerfile
-FROM node:20-alpine as base
+FROM node:24-alpine as base
 
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
