@@ -3,8 +3,8 @@
 
 repos:
   # Python code formatting and linting
-  - repo: https://github.com/psf/black
-    rev: 23.11.0
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 26.5.1
     hooks:
       - id: black
         name: black (python)
@@ -12,7 +12,7 @@ repos:
         language_version: python3
 
   - repo: https://github.com/PyCQA/isort
-    rev: 5.12.0
+    rev: 9.0.1
     hooks:
       - id: isort
         name: isort (python)
@@ -20,7 +20,7 @@ repos:
         args: ["--profile", "black"]
 
   - repo: https://github.com/PyCQA/flake8
-    rev: 6.1.0
+    rev: 7.3.0
     hooks:
       - id: flake8
         name: flake8 (python)
@@ -28,7 +28,7 @@ repos:
         args: [--max-line-length=88, --extend-ignore=E203,W503]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.7.1
+    rev: v2.3.1
     hooks:
       - id: mypy
         name: mypy (python)
@@ -37,7 +37,7 @@ repos:
 
   # JavaScript/TypeScript formatting and linting
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
+    rev: v4.0.0-alpha.8
     hooks:
       - id: prettier
         name: prettier (js/ts)
@@ -45,7 +45,7 @@ repos:
         types_or: [javascript, jsx, ts, tsx, json, yaml, markdown]
 
   - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v8.54.0
+    rev: v10.9.1
     hooks:
       - id: eslint
         name: eslint (js/ts)
@@ -57,7 +57,7 @@ repos:
 
   # Go formatting and linting
   - repo: https://github.com/TekWizely/pre-commit-golang
-    rev: v1.0.0-rc.1
+    rev: v1.0.0-rc.4
     hooks:
       - id: go-fmt
         name: go fmt
@@ -77,7 +77,7 @@ repos:
 
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         name: trim trailing whitespace
@@ -107,7 +107,7 @@ repos:
 
   # Security checks
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.5
+    rev: 1.9.4
     hooks:
       - id: bandit
         name: bandit (python security)
@@ -115,7 +115,7 @@ repos:
         exclude: ^examples/python/tests/
 
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: detect-secrets
         name: detect secrets
@@ -123,7 +123,7 @@ repos:
 
   # Docker linting
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.0
+    rev: v2.15.1
     hooks:
       - id: hadolint-docker
         name: hadolint (dockerfile)
@@ -131,7 +131,7 @@ repos:
 
   # Markdown linting
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.37.0
+    rev: v0.49.1
     hooks:
       - id: markdownlint
         name: markdownlint
@@ -139,7 +139,7 @@ repos:
 
   # Commit message validation
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v3.0.0
+    rev: v4.4.0
     hooks:
       - id: conventional-pre-commit
         name: conventional commit
@@ -147,7 +147,7 @@ repos:
 
   # YAML formatting
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
+    rev: v4.0.0-alpha.8
     hooks:
       - id: prettier
         name: prettier (yaml)
@@ -156,7 +156,7 @@ repos:
 
   # Shell script linting
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.9.0.6
+    rev: v0.11.0.1-1
     hooks:
       - id: shellcheck
         name: shellcheck
